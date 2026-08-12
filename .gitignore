@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 node_modules/
 .next/
+
+# Local database artifacts
+*.db
+*.duckdb

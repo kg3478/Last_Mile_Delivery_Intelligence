@@ -2,9 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.core.database import init_db, AsyncSessionLocal
 from app.ingestion.pipeline import IngestionPipeline
+from app.models.models import Dataset
 from app.schemas.schemas import IngestRequestSchema
 
 from app.api import (
@@ -12,21 +16,35 @@ from app.api import (
     optimization, recommendations, drivers, models, audit
 )
 
+
+async def _sample_dataset_exists(session: AsyncSession, dataset_name: str) -> bool:
+    """Return True if at least one Dataset row with this name already exists."""
+    result = await session.execute(
+        select(func.count()).select_from(Dataset).where(Dataset.name == dataset_name)
+    )
+    return result.scalar_one() > 0
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB tables
     await init_db()
-    
-    # Check if database has initial sample data, if not load fixture data automatically
+
+    # Load sample datasets on first startup only so the app is immediately
+    # interactive out-of-the-box.  Subsequent restarts skip ingestion to
+    # prevent duplicate datasets / routes / drivers.
     async with AsyncSessionLocal() as session:
         pipeline = IngestionPipeline(session)
-        # Load sample datasets so app is immediately interactive out-of-the-box
-        try:
-            await pipeline.run_ingestion(IngestRequestSchema(dataset_name="AMAZON_LAST_MILE"))
-            await pipeline.run_ingestion(IngestRequestSchema(dataset_name="MENDELEY_PLANNED_VS_ACTUAL"))
-        except Exception as e:
-            print(f"Initial ingestion notice: {e}")
-            
+        for dataset_name in ("AMAZON_LAST_MILE", "MENDELEY_PLANNED_VS_ACTUAL"):
+            try:
+                if await _sample_dataset_exists(session, dataset_name):
+                    print(f"Startup: '{dataset_name}' already loaded — skipping ingestion.")
+                    continue
+                print(f"Startup: '{dataset_name}' not found — ingesting sample data.")
+                await pipeline.run_ingestion(IngestRequestSchema(dataset_name=dataset_name))
+            except Exception as e:
+                print(f"Initial ingestion notice ({dataset_name}): {e}")
+
     yield
 
 app = FastAPI(
