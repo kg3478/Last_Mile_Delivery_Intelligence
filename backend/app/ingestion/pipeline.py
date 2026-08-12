@@ -8,7 +8,7 @@ from typing import List, Tuple, Dict, Any
 
 from app.core.config import settings
 from app.core.database import get_duckdb_connection
-from app.ingestion.canonical import CanonicalRoute
+from app.ingestion.canonical import CanonicalRoute, CanonicalStop, CanonicalPackage
 from app.ingestion.amazon_adapter import AmazonLastMileAdapter
 from app.ingestion.mendeley_adapter import MendeleyPlannedVsActualAdapter
 from app.ingestion.validation import DataValidator

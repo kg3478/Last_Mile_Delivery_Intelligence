@@ -7,16 +7,25 @@ from app.core.config import settings
 # Base declarative class for SQLAlchemy ORM models
 Base = declarative_base()
 
-# Use SQLite with aiosqlite for standalone local execution (no PostgreSQL required)
-sqlite_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "lastmile.db")
-db_url = f"sqlite+aiosqlite:///{sqlite_path}"
-
-engine = create_async_engine(
-    db_url,
-    echo=False,
-    future=True,
-    connect_args={"check_same_thread": False}
+# Use DATABASE_URL when configured; otherwise fall back to local SQLite.
+sqlite_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "lastmile.db"
 )
+sqlite_fallback_url = f"sqlite+aiosqlite:///{sqlite_path}"
+
+db_url = settings.DATABASE_URL or sqlite_fallback_url
+
+engine_kwargs = {
+    "echo": False,
+    "future": True,
+}
+
+# SQLite requires check_same_thread=False for async local development.
+if db_url.startswith("sqlite+aiosqlite://"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_async_engine(db_url, **engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
