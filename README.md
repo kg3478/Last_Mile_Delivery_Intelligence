@@ -385,17 +385,21 @@ Synthetic data is **never used** for: model training, final evaluation, optimiza
 
 ---
 
-## 13. Limitations
+## 13. System Boundaries & Enterprise Production Solutions
 
-1. **Real dataset files not included** — must be downloaded separately; system runs in `synthetic_demo` mode without them
-2. **ML models: insufficient data in demo mode** — no evaluation metrics until real data is ingested
-3. **Static traffic model** — no live GPS or traffic signal feeds; travel times use historical averages
-4. **Geographic scope** — Amazon dataset: U.S. metropolitan areas (2018); Mendeley: European courier routes
-5. **VRP uses Haversine distance** — straight-line approximation; actual road-network distances differ
-6. **No authentication layer** — all endpoints are publicly accessible in the current implementation
-7. **DuckDB append-only on re-ingestion** — OLAP table is rebuilt on first ingest only
-8. **OR-Tools 2-second time limit** — complex routes may find only heuristic (not globally optimal) solutions
-9. **No live production monitoring** — model drift and prediction-vs-actual comparison require post-delivery label collection
+This platform is architected as a modular decision-intelligence engine. The table below documents current system boundaries alongside their exact commercial production upgrade paths:
+
+| # | System Boundary | Production Solution & Commercial Upgrade Path |
+|---|---|---|
+| 1 | **Real dataset files not included** (runs in `synthetic_demo` mode by default) | **Automated Data Pipeline**: Connect ingestion to S3/Snowflake/BigQuery where historical route logs accumulate. Ingesting raw data automatically triggers model training and exposes live accuracy metrics. |
+| 2 | **ML models report `insufficient_data` in demo mode** | **Enterprise Training Pipeline**: Once ≥10 real route samples land in `./data/`, `ETAPredictionModel.train(X, y, data_mode="real")` calculates real MAE, RMSE, P90, and PR-AUC metrics without manual intervention. |
+| 3 | **Static traffic model** (no live GPS or traffic signal feeds) | **Live Telematics & Telemetry**: Connect driver smartphones (iOS/Android) or vehicle GPS hardware (Geotab, Samsara) streaming real-time GPS pings via WebSockets/MQTT into Apache Kafka/Redis. |
+| 4 | **Geographic scope** (historical US & European research datasets) | **Global Map Coverage**: System architecture is coordinate-agnostic. Adding global road network data (OSRM / Mapbox) enables worldwide dispatch routing. |
+| 5 | **VRP uses Haversine straight-line distance** | **Routing Engine Integration**: Integrate OSRM (Open Source Routing Machine), Valhalla, or Google Maps Distance Matrix API to substitute straight-line math with exact road-network travel distances and live traffic speeds. |
+| 6 | **No authentication layer** (open local API endpoints) | **Enterprise RBAC Auth**: Implement JWT / OAuth2 (Auth0) middleware enforcing 5 defined roles: `ADMIN`, `DISPATCHER`, `OPERATIONS_MANAGER`, `ANALYST`, `VIEWER`. |
+| 7 | **DuckDB append-only on re-ingestion** | **OLAP Schema Migration**: Implement `CREATE OR REPLACE TABLE routes_olap` with partition keys (`dataset_id`, `route_date`) for dynamic OLAP updates. |
+| 8 | **OR-Tools 2-second time limit** | **Asynchronous Worker Queue**: Offload complex 500+ stop multi-depot VRP solves to background worker pools (Celery / Redis Queue / RabbitMQ) for deep 30-60s optimization searches. |
+| 9 | **No live production monitoring** | **MLOps & Drift Pipeline**: Integrate Evidently AI / MLflow to compare dispatch-time ETA predictions against driver-reported actual arrival times for automated drift detection and daily retraining. |
 
 ---
 
@@ -403,3 +407,4 @@ Synthetic data is **never used** for: model training, final evaluation, optimiza
 
 Built as a demonstration of end-to-end logistics intelligence engineering across:  
 **Data Engineering → ML → Operations Research → Backend → Frontend**
+
