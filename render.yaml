@@ -11,7 +11,9 @@ services:
     name: lastmile-backend
     env: python
     plan: free
-    buildCommand: pip install -r backend/requirements.txt
+    # Upgrades pip and enforces binary wheel installation (--only-binary :all:)
+    # to avoid source compilation errors (gfortran/meson) for scipy/scikit-learn.
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --only-binary :all: -r backend/requirements.txt
     startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHONPATH
