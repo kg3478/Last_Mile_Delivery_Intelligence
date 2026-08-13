@@ -74,7 +74,10 @@ class ScenarioSimulator:
             "baseline_duration_min": baseline_dur,
             "simulated_duration_min": sim_dur,
             "duration_saved_min": saved_dur,
-            "baseline_late_stops": 2 if route.actual_duration_min and route.actual_duration_min > baseline_dur else 0,
+            # Baseline late_stops is not known at simulation time (planned route).
+            # Simulated late_stops reflects stops optimized away.
+            "baseline_late_stops": 0,
             "simulated_late_stops": late_stops,
-            "efficiency_gain_pct": round((saved_dur / max(1.0, baseline_dur)) * 100.0, 1)
+            "efficiency_gain_pct": round((saved_dur / max(1.0, baseline_dur)) * 100.0, 1),
         }
+

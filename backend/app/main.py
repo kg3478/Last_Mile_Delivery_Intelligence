@@ -30,6 +30,13 @@ async def lifespan(app: FastAPI):
     # Initialize DB tables
     await init_db()
 
+    # Warn when running with the default development SECRET_KEY
+    if settings.is_default_secret_key():
+        print(
+            "WARNING: Running with the default SECRET_KEY. "
+            "Set a strong SECRET_KEY environment variable before deploying to production."
+        )
+
     # Load sample datasets on first startup only so the app is immediately
     # interactive out-of-the-box.  Subsequent restarts skip ingestion to
     # prevent duplicate datasets / routes / drivers.
@@ -51,16 +58,17 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url="/docs",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-# Enable CORS for Next.js frontend
+# CORS: restrict origins in production via the ALLOWED_ORIGINS environment variable.
+# Default "*" is development-only; set ALLOWED_ORIGINS=https://your-domain.com in prod.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.get_allowed_origins(),
+    allow_credentials=False,  # credentials=True + origins=* is a security misconfiguration
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Mount Routers

@@ -100,8 +100,10 @@ class IngestionPipeline:
                     dataset_id=dataset_id,
                     external_driver_id=driver_id,
                     name=f"Driver {driver_id}",
-                    historical_adherence_rate=0.92,
-                    historical_avg_delay_min=4.5
+                    # Neutral defaults — will be updated once real historical data is available.
+                    # Model schema defaults: adherence_rate=1.0, avg_delay_min=0.0
+                    historical_adherence_rate=1.0,
+                    historical_avg_delay_min=0.0
                 )
                 self.db.add(driver_obj)
                 drivers_map[driver_id] = driver_obj
@@ -151,7 +153,10 @@ class IngestionPipeline:
                 )
                 self.db.add(stop_obj)
 
-                # Package deliveries
+                # Package deliveries.
+                # delay_minutes is 0.0 when actual arrival times are unavailable.
+                # is_late is inferred from stop sequence reordering as a proxy;
+                # accurate lateness requires planned_arrival vs actual_arrival timestamps.
                 for pkg in c_stop.packages:
                     deliv_obj = Delivery(
                         id=str(uuid.uuid4()),
@@ -161,7 +166,7 @@ class IngestionPipeline:
                         volume_m3=pkg.volume_m3 or 0.015,
                         priority="NORMAL",
                         is_late=is_reordered,
-                        delay_minutes=12.5 if is_reordered else 0.0
+                        delay_minutes=0.0  # Set to 0.0; actual delay requires arrival timestamps
                     )
                     self.db.add(deliv_obj)
 
@@ -234,7 +239,8 @@ class IngestionPipeline:
                     "stop_count": len(r.stops)
                 })
             df = pd.DataFrame(rows)
-            conn.execute("CREATE TABLE IF NOT EXISTS routes_olap AS SELECT * FROM df")
+            # CREATE OR REPLACE ensures re-ingestion always reflects the latest data.
+            conn.execute("CREATE OR REPLACE TABLE routes_olap AS SELECT * FROM df")
             conn.close()
         except Exception:
             pass

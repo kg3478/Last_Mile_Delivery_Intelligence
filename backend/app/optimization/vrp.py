@@ -121,18 +121,26 @@ class VRPOptimizer:
             })
         opt_dist_meters += dist_matrix[prev_node][0] # Return to depot
 
-        baseline_dist_km = route.planned_distance_km or (sum(dist_matrix[i][i+1] for i in range(len(sorted_stops))) / 1000.0)
+        baseline_dist_km = route.planned_distance_km or (sum(
+            dist_matrix[i][i + 1] for i in range(len(sorted_stops))
+        ) / 1000.0)
         optimized_dist_km = round(opt_dist_meters / 1000.0, 2)
-        
-        # If distance matrix simulation was scaled, ensure reasonable bound
-        if optimized_dist_km < 5.0 and len(sorted_stops) > 3:
-            optimized_dist_km = round(baseline_dist_km * 0.82, 2)
 
-        dist_savings_pct = round(max(0.0, ((baseline_dist_km - optimized_dist_km) / max(1.0, baseline_dist_km)) * 100.0), 1)
+        dist_savings_pct = round(
+            max(0.0, ((baseline_dist_km - optimized_dist_km) / max(1.0, baseline_dist_km)) * 100.0),
+            1,
+        )
 
         baseline_dur_min = route.planned_duration_min or 240.0
-        optimized_dur_min = round(baseline_dur_min * (1.0 - (dist_savings_pct / 100.0 * 0.8)), 1)
-        dur_savings_pct = round(max(0.0, ((baseline_dur_min - optimized_dur_min) / max(1.0, baseline_dur_min)) * 100.0), 1)
+        # Duration savings are estimated proportionally to distance savings.
+        # Speed is assumed constant, so duration scales with distance.
+        optimized_dur_min = round(
+            baseline_dur_min * (1.0 - (dist_savings_pct / 100.0 * 0.8)), 1
+        )
+        dur_savings_pct = round(
+            max(0.0, ((baseline_dur_min - optimized_dur_min) / max(1.0, baseline_dur_min)) * 100.0),
+            1,
+        )
 
         objective_value = round((optimized_dist_km * weights.get("distance_weight", 1.0)) + (optimized_dur_min * weights.get("duration_weight", 1.5)), 2)
 

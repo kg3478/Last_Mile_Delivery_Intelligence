@@ -25,35 +25,71 @@ class DispatchDecisionEngine:
         rec_id = str(uuid.uuid4())
         
         # Rule-based decision matrix
+        # action_type must be one of: MONITOR, RESEQUENCE, REROUTE, REASSIGN, PRIORITIZE, ESCALATE
         if risk_level == "LOW":
-            action_type = "CONTINUE"
-            title = "Continue Route as Planned"
-            explanation = "Route is performing within normal bounds. No operational intervention required."
+            action_type = "MONITOR"
+            title = "Route within Normal Bounds — Monitor Passively"
+            explanation = "Route is performing within normal operating bounds. No intervention required; continue standard monitoring."
             impact = {"saved_minutes": 0, "saved_km": 0, "reduced_late_risk_pct": 0}
 
         elif risk_level == "MEDIUM":
             if deviation_prob > 0.4:
                 action_type = "RESEQUENCE"
                 title = "Resequence Route Stops"
-                explanation = f"Moderate route deviation risk detected (prob={deviation_prob}). Resequencing stops 3 and 4 recommended to avoid 15-min delay."
-                impact = {"saved_minutes": 14.5, "saved_km": 2.8, "reduced_late_risk_pct": 25.0}
+                explanation = (
+                    f"Moderate route deviation risk detected (probability={deviation_prob:.2f}). "
+                    f"Predicted delay: {predicted_delay_min:.1f} min. "
+                    "Resequencing stops to improve spatial efficiency is recommended."
+                )
+                # Estimated impact — proportional to predicted delay, not hard-coded
+                est_saved_min = round(min(predicted_delay_min * 0.4, 20.0), 1)
+                impact = {
+                    "saved_minutes": est_saved_min,
+                    "saved_km": round(est_saved_min * 0.2, 1),
+                    "reduced_late_risk_pct": round(deviation_prob * 50.0, 1),
+                }
             else:
                 action_type = "MONITOR"
                 title = "Active Dispatcher Monitoring"
-                explanation = f"Predicted delay of {predicted_delay_min} mins. Monitor route progress at stop #4."
-                impact = {"saved_minutes": 5.0, "saved_km": 0.0, "reduced_late_risk_pct": 10.0}
+                explanation = (
+                    f"Predicted delay of {predicted_delay_min:.1f} min. "
+                    "Monitor route progress and intervene if stop-level delays accumulate."
+                )
+                est_saved_min = round(min(predicted_delay_min * 0.2, 10.0), 1)
+                impact = {
+                    "saved_minutes": est_saved_min,
+                    "saved_km": 0.0,
+                    "reduced_late_risk_pct": 10.0,
+                }
 
         elif risk_level == "HIGH":
             action_type = "REROUTE"
-            title = "Apply VRP Optimized Sequence"
-            explanation = f"High delivery risk ({risk_score}/100) with predicted delay of {predicted_delay_min} mins. Re-optimizing route sequence cuts duration by ~25 mins."
-            impact = {"saved_minutes": 24.0, "saved_km": 4.5, "reduced_late_risk_pct": 55.0}
+            title = "Apply VRP-Optimized Stop Sequence"
+            explanation = (
+                f"High delivery risk (score={risk_score:.1f}/100, predicted delay={predicted_delay_min:.1f} min). "
+                "Reoptimizing the stop sequence using the VRP solver is recommended."
+            )
+            est_saved_min = round(min(predicted_delay_min * 0.5, 35.0), 1)
+            impact = {
+                "saved_minutes": est_saved_min,
+                "saved_km": round(est_saved_min * 0.18, 1),
+                "reduced_late_risk_pct": round(min(risk_score * 0.7, 65.0), 1),
+            }
 
-        else: # CRITICAL
+        else:  # CRITICAL
             action_type = "ESCALATE"
-            title = "Escalate to Senior Dispatcher & Prioritize High-Risk Stop"
-            explanation = f"Critical risk level ({risk_score}/100). Severe predicted delay of {predicted_delay_min} mins. Prioritize high-value package at stop #3 immediately."
-            impact = {"saved_minutes": 35.0, "saved_km": 6.2, "reduced_late_risk_pct": 78.0}
+            title = "Escalate to Senior Dispatcher — Critical Risk"
+            explanation = (
+                f"Critical risk level (score={risk_score:.1f}/100, predicted delay={predicted_delay_min:.1f} min). "
+                "Immediate dispatcher escalation required. Prioritize high-value stops and consider route reassignment."
+            )
+            est_saved_min = round(min(predicted_delay_min * 0.6, 50.0), 1)
+            impact = {
+                "saved_minutes": est_saved_min,
+                "saved_km": round(est_saved_min * 0.18, 1),
+                "reduced_late_risk_pct": round(min(risk_score * 0.8, 80.0), 1),
+            }
+
 
         # Structured evidence audit object
         evidence = {

@@ -1,0 +1,42 @@
+# ============================================================
+# Render Blueprint Specification — LastMile Delivery Intelligence
+# ============================================================
+# Connect your GitHub repo to Render and select "New -> Blueprint".
+# Render will automatically create the backend and frontend web services.
+# ============================================================
+
+services:
+  # ------------------------------------------------------------
+  # FastAPI Backend Web Service
+  # ------------------------------------------------------------
+  - type: web
+    name: lastmile-backend
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHONPATH
+        value: backend
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: DATA_DIR
+        value: ./data
+
+  # ------------------------------------------------------------
+  # Next.js Frontend Web Service
+  # ------------------------------------------------------------
+  - type: web
+    name: lastmile-frontend
+    env: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: lastmile-backend
+          property: url

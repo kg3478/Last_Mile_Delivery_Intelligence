@@ -27,9 +27,13 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/lastmile_db
-      - SECRET_KEY=supersecretkey_change_in_production_32bytes!
+      # SECRET_KEY is read from .env — do not commit a real secret key to source control.
+      # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey_change_in_production_32bytes!}
       - ENVIRONMENT=development
       - DATA_DIR=/app/data
+      # ALLOWED_ORIGINS: set to your frontend domain in production
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
     volumes:
       - ./backend:/app
       - ./data:/app/data
