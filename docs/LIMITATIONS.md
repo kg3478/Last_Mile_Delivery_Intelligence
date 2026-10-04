@@ -1,63 +1,69 @@
-# System Limitations & Boundary Conditions — LastMile Delivery Intelligence
+# System Limitations, Assumptions & Boundary Conditions — LastMile Delivery Intelligence
 
-## Known Limitations
+## 1. Overview of System Boundaries
 
-### 1. Real Dataset Files Not Included
+LastMile Delivery Intelligence is engineered as a decision-intelligence overlay and tactical planning engine for last-mile logistics operations.
 
-The Amazon Last Mile Routing Challenge and Mendeley Planned-vs-Actual datasets
-are **not committed to this repository**. Both must be downloaded separately
-from their public sources and placed in `./data/`.
+To ensure operational transparency and avoid misleading claims, this document enumerates all known architectural, algorithmic, statistical, and infrastructural boundary conditions.
 
-When the dataset files are absent, the application operates in **synthetic_demo**
-mode using a hard-coded 5-route fixture. This mode is clearly labeled
-(`is_synthetic=True` on Dataset records, `data_mode="synthetic_demo"` in the
-ML model API).
+---
 
-### 2. ML Models: Insufficient Training Data in Demo Mode
+## 2. Enumerated System Limitations
 
-Both ML models (ETA predictor, deviation classifier) are trained on 5 hard-coded
-benchmark samples in synthetic_demo mode. No statistically meaningful evaluation
-metrics are available until real data is provided. The `/api/v1/metrics` endpoint
-returns `evaluation_status: "insufficient_data"` and `metrics: null` — not fake numbers.
+### 2.1 Public Research Dataset Availability (Demo Mode Boundary)
+- **Constraint**: The Amazon Last Mile Routing Challenge (multi-gigabyte JSON) and Mendeley Planned-vs-Actual datasets are **not committed to the Git repository** due to size limits.
+- **Operational Impact**: When raw dataset files are absent from `./data/`, the application operates in **`synthetic_demo`** mode with a 5-route benchmark fixture.
+- **Mitigation / Remedy**: The system clearly tags records with `is_synthetic = True` and reports `data_mode: "synthetic_demo"`. Complete instructions to ingest genuine public datasets are documented in `docs/DATA.md`.
 
-### 3. Static Traffic Representation
+### 2.2 Statistical Validity of Demo Mode Machine Learning
+- **Constraint**: Supervised ML models (`ETAPredictionModel`, `RouteDeviationClassifier`) trained on 5 bootstrap benchmark samples cannot yield statistically significant performance metrics.
+- **Operational Impact**: The system reports `evaluation_status: "insufficient_data"` and `metrics: null`.
+- **Policy Enforcement**: The platform strictly prohibits fabricating or hard-coding artificial accuracy numbers. Real evaluation metrics require downloading real datasets and running the evaluation pipeline.
 
-The dataset does not include live GPS telemetry. Traffic factors are modeled
-via service time variance and historical travel durations only.
+### 2.3 Haversine Distance vs Real-World Road Topologies
+- **Constraint**: The Google OR-Tools VRP solver computes all-pairs distance matrices using the **Haversine great-circle formula** (straight-line spherical geometry).
+- **Operational Impact**: Haversine distance underestimates actual driving distance across urban road networks with one-way streets, cul-de-sacs, bridges, and traffic barricades.
+- **Mitigation / Remedy**: The duration heuristic applies an urban circuity multiplier ($1.2 \dots 1.4\times$) and time-window pressure penalties to approximate real transit friction. Integration with real-road matrix engines (e.g., OpenStreetMap / OSRM) is planned for Phase 4.
 
-### 4. Geographic Scope
+### 2.4 OR-Tools Solver Heuristic Time Cutoff
+- **Constraint**: To prevent blocking the asynchronous web server during dispatcher requests, the solver enforces a **2.0-second search cutoff**:
+  ```python
+  search_parameters.time_limit.seconds = 2
+  ```
+- **Operational Impact**: For complex routes exceeding 40 stops, the solver returns a high-quality local heuristic solution (`PATH_CHEAPEST_ARC`), which may not represent the global mathematical optimum.
 
-Public datasets originate from U.S. metropolitan regions (Amazon) and specific
-European urban courier networks (Mendeley). Model behavior in other geographies
-is untested.
+### 2.5 Static Historical Traffic vs Live Real-Time Telemetry
+- **Constraint**: The platform models delay risk using historical driver adherence, time-window tightness, and route complexity. It does not interface with live streaming GPS OBD-II transponders or dynamic traffic feeds (e.g. Google Maps Traffic API).
+- **Operational Impact**: Sudden, unpredicted traffic anomalies occurring mid-shift (such as a multi-vehicle accident occurring 5 minutes ago) cannot be detected until reflected in stop arrival variance.
 
-### 5. No Live Production Dispatch Integration
+### 2.6 Geographic and Operational Scope
+- **Constraint**: Datasets reflect U.S. metropolitan van deliveries (Amazon) and European urban courier networks (Mendeley).
+- **Operational Impact**: Model behavior in different operating conditions (e.g. 2-wheeler hyper-local grocery delivery in Southeast Asia or long-haul rural freight) has not been benchmarked and requires local re-training.
 
-The platform is a decision-intelligence overlay with human-in-the-loop audit
-logging. It does not directly control vehicle hardware or dispatch systems.
+### 2.7 DuckDB OLAP Table Re-Ingestion Behavior
+- **Constraint**: In the current implementation, the DuckDB `routes_olap` analytical table is instantiated upon initial startup via:
+  ```sql
+  CREATE TABLE IF NOT EXISTS routes_olap AS SELECT * FROM df;
+  ```
+- **Operational Impact**: Triggering subsequent re-ingestion runs via the API updates the primary PostgreSQL/SQLite database but does not automatically drop and refresh the DuckDB OLAP table until the service is restarted.
 
-### 6. OR-Tools VRP Solver Assumptions
+### 2.8 Human-in-the-Loop Dispatch Overlay (No Direct Hardware Actuation)
+- **Constraint**: The system functions as a **decision-support platform**, not an automated execution actuator.
+- **Operational Impact**: Optimized sequences and recommendations are presented to dispatchers for explicit authorization (ACCEPT, REJECT, DISMISS). The platform does not directly flash turn-by-turn routes to third-party in-cab electronic logging devices (ELDs).
 
-The optimization solver uses Haversine straight-line distance as a proxy for
-actual road distance. Real road networks will produce different results. The
-solver uses a 2-second time limit per route; complex routes may find only
-heuristic (not globally optimal) solutions.
+### 2.9 Authentication & Production Hardening
+- **Constraint**: In the current release, authentication and authorization endpoints are stubbed; all API endpoints are publicly accessible across local networks.
+- **Operational Impact**: Suitable for local evaluation, technical review, and staging environments, but requires OAuth2 / JWT authentication before exposing to public networks.
 
-### 7. DuckDB OLAP Table is Append-Only on Re-Ingestion
+---
 
-`CREATE TABLE IF NOT EXISTS ... AS SELECT * FROM df` creates the DuckDB
-`routes_olap` table only on first ingestion. User-triggered re-ingestion via
-the API does not update the DuckDB table. This is a known limitation; a
-full OLAP refresh on re-ingestion is a planned improvement.
+## 3. Production Deployment Readiness Checklist
 
-### 8. Authentication Not Implemented
+Before deploying this software into a mission-critical commercial logistics environment, operators must execute the following hardening steps:
 
-The current API has no authentication or authorization layer. All endpoints
-are publicly accessible. This is acceptable for a local demonstration but must
-be addressed before production deployment.
-
-### 9. Default SECRET_KEY
-
-The default development SECRET_KEY is insecure. It must be replaced with a
-cryptographically strong random key before any production deployment. The
-application logs a warning at startup when the default key is detected.
+- [ ] **Configure Strong `SECRET_KEY`**: Set a high-entropy 256-bit secret key in `.env` to replace the default development key.
+- [ ] **Deploy OSRM / Mapbox Road Matrix Engine**: Replace Haversine straight-line distances with true road-network driving distances and turn restrictions.
+- [ ] **Ingest Real Dataset Volume**: Ingest $\ge 1,000$ historical routes to transition ML models from `synthetic_demo` to `real` evaluated mode.
+- [ ] **Enforce Authentication & RBAC**: Activate role-based access control (`ADMIN`, `DISPATCHER`, `OPERATIONS_MANAGER`, `ANALYST`, `VIEWER`).
+- [ ] **Configure Redis Caching**: Cache computed Haversine distance matrices for frequently repeated depot/cluster locations.
+- [ ] **Set Production CORS Origins**: Restrict `ALLOWED_ORIGINS` to the exact production domain (e.g., `https://lastmile.enterprise.com`).
